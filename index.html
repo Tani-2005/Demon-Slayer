@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Demon Slayer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Georgia', serif; }
+        #ui { position: absolute; top: 5%; width: 100%; text-align: center; color: #fff; pointer-events: none; z-index: 10; }
+        h1 { font-size: 3.5rem; margin: 0; letter-spacing: 15px; text-shadow: 0 0 20px rgba(255, 255, 255, 0.5); background: linear-gradient(to bottom, #fff, #4af); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        #style-name { font-size: 1.5rem; color: #fff; margin-top: 15px; font-weight: bold; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 0 10px rgba(255, 255, 255, 0.8); transition: color 0.3s ease; }
+        #video-container { position: absolute; bottom: 20px; left: 20px; width: 320px; height: 240px; border: 1px solid rgba(255, 255, 255, 0.1); z-index: 20; border-radius: 8px; overflow: hidden; opacity: 0.9; background: #000; }
+        video { display: none; }
+        #output_canvas { width: 100%; height: 100%; transform: scaleX(-1); }
+    </style>
+    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } } </script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div id="ui"><h1>鬼滅の刃</h1><div id="style-name">TOTAL CONCENTRATION BREATHING</div></div>
+    <div id="video-container"><video class="input_video"></video><canvas id="output_canvas"></canvas></div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // --- 1. SETUP ---
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x000510, 0.02);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 15, 50); 
+    camera.lookAt(0, -5, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
+    document.body.appendChild(renderer.domElement);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth/2, window.innerHeight/2), 1.5, 0.4, 0.85);
+    composer.addPass(bloomPass);
+
+    // --- 2. PARTICLES ---
+    const COUNT = 10000;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(COUNT * 3);
+    const colors = new Float32Array(COUNT * 3);
+    const sizes = new Float32Array(COUNT);
+    
+    const targetPositions = new Float32Array(COUNT * 3);
+    const targetColors = new Float32Array(COUNT * 3);
+    const targetSizes = new Float32Array(COUNT);
+
+    for(let i=0; i<COUNT*3; i++) {
+        positions[i] = (Math.random()-0.5) * 100;
+        colors[i] = 0;
+    }
+    for(let i=0; i<COUNT; i++) sizes[i] = 0.5;
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const material = new THREE.PointsMaterial({ 
+        size: 0.6, vertexColors: true, blending: THREE.AdditiveBlending, 
+        transparent: true, depthWrite: false, opacity: 0.9 
+    });
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // --- 3. STATE & GLOBALS ---
+    let handX = 0, handY = 0;
+    let time = 0;
+    let currentStyle = 'neutral';
+    const nameEl = document.getElementById('style-name');
+    
+    // --- 4. MATH FUNCTIONS ---
+    let tx, ty, tz, tr, tg, tb, ts;
+
+    function calcTarget(i) {
+        if (currentStyle === 'giyu') {
+            const maxRadius = 60; const ratio = i / COUNT;
+            const r = ratio * maxRadius; const theta = i * 2.4; 
+            const ripple = Math.sin(r * 0.4 - time * 2.0) * 1.5; 
+            tx = r * Math.cos(theta); 
+            ty = -15 + ripple;
+            tz = r * Math.sin(theta);
+            const h = (ripple + 1.5) / 3.0; 
+            tr = 0.0; tg = 0.2 + (0.4 * h); tb = 0.5 + (0.5 * h); ts = 1.0;
+        }
+        else if (currentStyle === 'tanjiro') {
+            const pulse = Math.sin(time * 4.0) * 0.1 + 1.1; 
+            const angle = (i / COUNT) * Math.PI * 2 + time * 0.5;
+            if (i % 5 !== 0) {
+                const rBase = 28; const rJitter = Math.random() * 3; const r = (rBase + rJitter) * pulse;
+                tx = handX + Math.cos(angle) * r; 
+                ty = handY + Math.sin(angle) * r; 
+                tz = (Math.random()-0.5) * 8 * pulse;
+                tr = 1.0; tg = 0.6; tb = 0.1; ts = 2.2 * pulse;
+            } else {
+                const rBase = 32; const r = (rBase + Math.random() * 8) * pulse; 
+                const drift = (Math.random() - 0.5) * 0.5; 
+                tx = handX + Math.cos(angle + drift) * r; 
+                ty = handY + Math.sin(angle + drift) * r; 
+                tz = (Math.random()-0.5) * 15; 
+                tr = 1.0; tg = 0.1; tb = 0.0; ts = 1.2 * pulse;
+            }
+        }
+        // 🔥 RENGOKU: 80% Arc (Right Side)
+        else if (currentStyle === 'rengoku') {
+            const totalArc = Math.PI * 1.6; 
+            const startAngle = -(totalArc / 2); 
+            const ratio = i / COUNT;
+            const angle = startAngle + (ratio * totalArc);
+            const baseRadius = 35;
+            const flicker = (Math.random() - 0.5) * 8; 
+            const r = baseRadius + flicker;
+            
+            tx = handX + Math.cos(angle) * r;
+            ty = handY + Math.sin(angle) * r;
+            tz = (Math.random() - 0.5) * 4;
+
+            const coreDist = Math.abs(flicker); 
+            if (coreDist < 2.0) { tr = 1.0; tg = 1.0; tb = 0.8; ts = 2.5; } 
+            else if (coreDist < 4.0) { tr = 1.0; tg = 0.5; tb = 0.0; ts = 1.8; } 
+            else { tr = 0.8; tg = 0.0; tb = 0.0; ts = 1.2; }
+            
+            ty += (time * 15 + i) % 8;
+        }
+        // 🩸 MUZAN: CHAOS WHIPS
+        else if (currentStyle === 'muzan') {
+            const numWhips = 24; 
+            const strand = i % numWhips; 
+            const tVal = time * 2;
+            const h = (i / COUNT) * 50; 
+            const angleOffset = (strand / numWhips) * Math.PI * 2;
+            
+            tx = handX + Math.sin(tVal + angleOffset + h*0.2) * (5 + h*0.5 + Math.random());
+            ty = handY - 15 + h + Math.cos(tVal + strand)*2; 
+            tz = Math.cos(tVal + angleOffset) * 15 + (Math.random()-0.5)*2;
+            tr = 0.6; tg = 0.0; tb = 0.1; ts = 1.6;
+        }
+        // ❄️ AKAZA: VERTICAL SNOWFLAKE (Compass)
+        else if (currentStyle === 'akaza') {
+            const branches = 12;
+            const progress = (i / COUNT); 
+            const angle = ((i % branches) / branches) * Math.PI * 2 + (time * 0.2); 
+            const r = progress * 35; 
+            let dev = (Math.sin(progress * 50) > 0.5) ? ((i % 2 === 0 ? 1 : -1) * 0.5 * (progress * 5)) : 0;
+            tx = handX + Math.cos(angle + dev) * r;
+            ty = handY + Math.sin(angle + dev) * r;
+            tz = (Math.random() - 0.5) * 2; 
+            tr = 0.4; tg = 0.9; tb = 1.0; ts = 1.2;
+        }
+        else { // Neutral
+            if (i % 10 === 0) {
+                tx = (Math.random()-0.5) * 100;
+                ty = (Math.random()-0.5) * 60;
+                tz = (Math.random()-0.5) * 40;
+                tr = 0.2; tg = 0.2; tb = 0.3; ts = 0.3;
+            } else {
+                tx = 0; ty = -1000; tz = 0; tr = 0; tg = 0; tb = 0; ts = 0;
+            }
+        }
+    }
+
+    // --- 5. TRACKING ---
+    const videoElement = document.querySelector('.input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    let skeletonColor = '#333'; 
+
+    const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5 }); 
+
+    hands.onResults((res) => {
+        canvasElement.width = videoElement.videoWidth;
+        canvasElement.height = videoElement.videoHeight;
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.drawImage(res.image, 0, 0, canvasElement.width, canvasElement.height);
+
+        let detected = 'neutral';
+
+        if (res.multiHandLandmarks && res.multiHandLandmarks.length > 0) {
+            const lm = res.multiHandLandmarks[0]; 
+            
+            drawConnectors(canvasCtx, lm, HAND_CONNECTIONS, {color: skeletonColor, lineWidth: 5});
+            drawLandmarks(canvasCtx, lm, {color: '#FFFFFF', lineWidth: 2});
+
+            if (['tanjiro', 'rengoku', 'muzan', 'akaza'].includes(currentStyle)) {
+                 handX = (lm[9].x - 0.5) * -100;
+                 handY = (lm[9].y - 0.5) * -80;
+            }
+
+            const isUp = (t, p) => lm[t].y < lm[p].y;
+            const thumb = lm[4].y < lm[3].y;
+            const index = isUp(8,6);
+            const middle = isUp(12,10);
+            const ring = isUp(16,14);
+            const pinky = isUp(20,18);
+            const pinch = Math.hypot(lm[8].x - lm[4].x, lm[8].y - lm[4].y) < 0.05;
+
+            const pinkyLowerThanRing = lm[20].y > lm[16].y;
+            const rengokuGesture = index && middle && ring && pinkyLowerThanRing;
+
+            // --- GESTURE PRIORITY ---
+            // 1. Akaza (All 5 Fingers)
+            if (index && middle && ring && pinky && thumb) detected = 'akaza';
+            // 2. Sun (Pinch)
+            else if (pinch) detected = 'tanjiro'; 
+            // 3. Flame (3 Fingers)
+            else if (rengokuGesture) detected = 'rengoku'; 
+            // 4. Others
+            else if (index && middle && !ring && !pinky) detected = 'giyu'; 
+            else if (index && pinky && !middle && !ring) detected = 'muzan'; 
+        }
+        canvasCtx.restore();
+        updateState(detected);
+    });
+
+    function updateState(style) {
+        if(currentStyle === style) return;
+        currentStyle = style;
+
+        if (style === 'giyu') { 
+            nameEl.innerText = "WATER BREATHING: DEAD CALM"; nameEl.style.color = "#4af"; 
+            bloomPass.strength = 1.8; skeletonColor = '#00aaff';
+        }
+        else if (style === 'tanjiro') { 
+            nameEl.innerText = "HINOKAMI KAGURA: CLEAR BLUE SKY"; nameEl.style.color = "#f50"; 
+            bloomPass.strength = 2.8; skeletonColor = '#ffaa00'; 
+        }
+        else if (style === 'rengoku') { 
+            nameEl.innerText = "FLAME BREATHING: RISING SCORCHING SUN"; nameEl.style.color = "#f20"; 
+            bloomPass.strength = 3.0; skeletonColor = '#ff2200'; 
+        }
+        else if (style === 'muzan') { 
+            nameEl.innerText = "BLOOD DEMON ART: BLACK BLOOD"; nameEl.style.color = "#a00"; 
+            bloomPass.strength = 1.0; skeletonColor = '#aa0000';
+        }
+        else if (style === 'akaza') { 
+            nameEl.innerText = "AKAZA:DESTRUCTIVE DEATH"; nameEl.style.color = "#6ef"; 
+            bloomPass.strength = 2.5; skeletonColor = '#66eeff';
+        }
+        else { 
+            nameEl.innerText = "TOTAL CONCENTRATION BREATHING"; nameEl.style.color = "#555"; 
+            bloomPass.strength = 0.5; skeletonColor = '#444444';
+        }
+    }
+
+    const cam = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({image: videoElement}); },
+        width: 640, height: 480
+    });
+    cam.start();
+
+    // --- 6. ANIMATION LOOP ---
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.02;
+
+        const pos = particles.geometry.attributes.position.array;
+        const col = particles.geometry.attributes.color.array;
+        const siz = particles.geometry.attributes.size.array;
+
+        for(let i=0; i<COUNT; i++) {
+            calcTarget(i); 
+
+            pos[i*3] += (tx - pos[i*3]) * 0.15;
+            pos[i*3+1] += (ty - pos[i*3+1]) * 0.15;
+            pos[i*3+2] += (tz - pos[i*3+2]) * 0.15;
+            
+            col[i*3] += (tr - col[i*3]) * 0.1;
+            col[i*3+1] += (tg - col[i*3+1]) * 0.1;
+            col[i*3+2] += (tb - col[i*3+2]) * 0.1;
+            
+            siz[i] += (ts - siz[i]) * 0.1;
+        }
+
+        particles.geometry.attributes.position.needsUpdate = true;
+        particles.geometry.attributes.color.needsUpdate = true;
+        particles.geometry.attributes.size.needsUpdate = true;
+
+        composer.render();
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        composer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
