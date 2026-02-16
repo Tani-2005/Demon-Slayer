@@ -4,6 +4,8 @@ A real-time Augmented Reality experience that brings **Breathing Styles** and **
 
 Built with **Three.js** for high-performance particle rendering and **MediaPipe** for precise hand tracking.
 
+![g60gx41x1jaf1](https://github.com/user-attachments/assets/9cbe201e-7e36-474f-8181-cfa760e60234)
+
 ## ✨ Features
 
 * **Real-Time Hand Tracking:** Detects hand landmarks instantly using computer vision.
